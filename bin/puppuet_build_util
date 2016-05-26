@@ -1,0 +1,88 @@
+#!/usr/bin/env ruby
+require 'puppet_build_util'
+require 'thor'
+
+class PuppetBuildUtilCmd < Thor
+
+  method_option :build_number, :required => true, :aliases => "-b", :type => :numeric, :desc => "Specify build number"
+  method_option :revision, :required => true, :aliases => "-h", :type => :string, :desc => "Specify code revision sha hash"
+  method_option :build_prefix, :required => false, :aliases => "-p", :type => :string, :default => 'pre', :desc => "Specify build number prefix, default to pre"
+  method_option :revision_prefix, :required => false, :aliases => "-r", :type => :string, :default => 'rev', :desc => "Specify revision hash prefix, default to rev"
+  method_option :metadata, :required => false, :aliases => "-m", :type => :string, :default => './metadata.json', :desc => "Specify locaiont of metadata.json, default to ./metadata.json"
+  method_option :noop, :required => false, :aliases => "-n", :type => :boolean, :default => true, :desc => "Specify noop mode, default true"
+  desc 'update_module_version', 'Update metadata.json version field with information from build number and revision hash'
+  def update_module_version
+    metadata_json = File.expand_path(options[:metadata])
+    raise Thor::Error, "#{metadata_json} does not exist" unless File.exists?(metadata_json)
+    puts "Using build numer: #{options[:build_number]} and revision hash #{options[:revision]}, metadata.json: #{metadata_json}"
+    metadata=PuppetBuildUtil::ModuleMetaData.new(metadata_json)   
+    release_info=metadata.gen_pre_release_info(options[:build_number], options[:revision])
+    version_specs=metadata.retrieve_version
+    if version_specs.length > 3
+      raise Thor::Error, "Version already has release info: #{version_specs}"
+    end
+    #update info
+    new_version = "#{metadata.version}-#{release_info}"
+    puts "Version with release info : #{new_version}"
+    metadata.version=new_version
+    #bump patch level
+    metadata.bump('patch')
+    puts "Setting version to #{metadata.version}"    
+    if ! options[:noop]
+      metadata.write metadata_json 
+    else
+      puts "In noop mode, do not make change"
+    end
+  end
+  
+  
+  method_option :metadata, :required => false, :aliases => "-m", :type => :string, :default => './metadata.json', :desc => "Specify locaiont of metadata.json, default to ./metadata.json"
+  method_option :output, :required => true, :aliases => "-o", :type => :string, :desc => "Output file"
+  method_option :force_overwrite, :required => false, :aliases => "-f", :type => :boolean, :default => false, :desc => "Overwrite existing output file"
+  desc 'dump_module_info', 'Dump module info to file'
+  def dump_module_info
+      output_path =File.expand_path(options[:output])
+      if File.exists?(output_path)
+        if File.directory?(output_path)
+          raise Thor::Error, "#{output_path} exists and is a directory"
+        end 
+        if !options[:force_overwrite]
+          raise Thor::Error, "#{output_path} already exits"
+        else
+          puts "Overwrite existing output file"
+        end
+      end
+      
+      metadata_json = File.expand_path(options[:metadata])
+      raise Thor::Error, "#{metadata_json} does not exist" unless File.exists?(metadata_json)
+      puts "Using #{metadata_json}"      
+      metadata=PuppetBuildUtil::ModuleMetaData.new(metadata_json)
+      metainfo=metadata.metadata  
+      module_version= metainfo['version']
+      module_author= metainfo['author']
+      module_name= metainfo['name']
+      #nomalize name
+      module_name=module_name.gsub("/","-")
+      short_name = module_name.split("-",2)[1]
+      File.open(output_path, "w") do |f|
+        f.write("module_author=#{module_author}\n")
+        f.write("module_name=#{short_name}\n")
+        f.write("module_version=#{module_version}\n")
+      end
+      
+  end
+  
+  desc 'version', "Show gem version"
+  def version()
+    puts PuppetBuildUtil::VERSION
+  end
+  
+  #http://stackoverflow.com/questions/17241932/ruby-thor-exit-status-in-case-of-an-error
+  def self.exit_on_failure?
+    true
+  end
+
+end #class
+
+
+PuppetBuildUtilCmd.start(ARGV)
