@@ -47,7 +47,8 @@ module PuppetBuildUtil
 
     # generate release information
     def gen_pre_release_info(build_number, revision)
-      "#{@config.build_prefix}#{build_number}#{@config.seperator}#{@config.revision_prefix}#{revision}"
+      padded_build_number = build_number+10*@config.padding_scale
+      "#{@config.build_prefix}#{padded_build_number}#{@config.seperator}#{@config.revision_prefix}#{revision}"
     end
 
     def retrieve_version()
